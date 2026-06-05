@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hücre Atlası — Lively Wallpaper</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500&display=swap');
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:100%;height:100%;overflow:hidden;background:#050d05;}
+
+  canvas#bg{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;}
+  canvas#cell{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1;cursor:none;}
+
+  /* HUD */
+  .hud{position:fixed;z-index:10;pointer-events:none;}
+  .hud-tl{top:32px;left:36px;}
+  .hud-tr{top:32px;right:36px;text-align:right;}
+  .hud-bl{bottom:32px;left:36px;}
+  .hud-br{bottom:32px;right:36px;text-align:right;}
+
+  .hud-title{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:3px;text-transform:uppercase;color:rgba(100,200,100,0.5);margin-bottom:4px;}
+  .hud-val{font-family:'Space Mono',monospace;font-size:22px;font-weight:700;color:rgba(120,220,120,0.85);line-height:1;}
+  .hud-sub{font-family:'DM Sans',sans-serif;font-size:11px;color:rgba(80,160,80,0.5);margin-top:3px;letter-spacing:1px;}
+  .hud-line{width:40px;height:1px;background:rgba(80,180,80,0.25);margin:10px 0;}
+  .hud-stat{font-family:'Space Mono',monospace;font-size:10px;color:rgba(80,160,80,0.45);letter-spacing:1px;line-height:1.8;}
+
+  /* scan lines overlay */
+  .scanlines{position:fixed;inset:0;z-index:2;pointer-events:none;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);}
+
+  /* vignette */
+  .vignette{position:fixed;inset:0;z-index:3;pointer-events:none;background:radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0,0,0,0.65) 100%);}
+
+  /* corner decorations */
+  .corner{position:fixed;z-index:5;pointer-events:none;width:60px;height:60px;}
+  .corner svg{width:100%;height:100%;}
+  .c-tl{top:20px;left:20px;}
+  .c-tr{top:20px;right:20px;transform:scaleX(-1);}
+  .c-bl{bottom:20px;left:20px;transform:scaleY(-1);}
+  .c-br{bottom:20px;right:20px;transform:scale(-1,-1);}
+
+  /* info panel */
+  .info-panel{
+    position:fixed;right:36px;top:50%;transform:translateY(-50%);
+    z-index:10;width:260px;
+    pointer-events:none;
+    opacity:0;transition:opacity 0.35s ease;
+  }
+  .info-panel.visible{opacity:1;}
+  .info-badge{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase;padding:3px 10px;border-radius:20px;display:inline-block;margin-bottom:10px;}
+  .info-name{font-family:'Space Mono',monospace;font-size:18px;font-weight:700;color:rgba(180,240,180,0.95);line-height:1.2;margin-bottom:10px;}
+  .info-desc{font-family:'DM Sans',sans-serif;font-size:12px;color:rgba(100,170,100,0.7);line-height:1.75;margin-bottom:14px;}
+  .info-stats{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+  .info-stat{background:rgba(10,25,10,0.7);border:0.5px solid rgba(40,90,40,0.4);border-radius:8px;padding:8px 10px;backdrop-filter:blur(10px);}
+  .info-stat-label{font-family:'Space Mono',monospace;font-size:8px;color:rgba(60,130,60,0.6);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;}
+  .info-stat-val{font-family:'Space Mono',monospace;font-size:11px;color:rgba(120,210,120,0.85);}
+  .info-divider{height:1px;background:rgba(60,140,60,0.2);margin:12px 0;}
+  .info-hint{font-family:'Space Mono',monospace;font-size:9px;color:rgba(60,120,60,0.5);letter-spacing:1px;text-transform:uppercase;}
+
+  /* modal */
+  .modal{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;background:rgba(0,5,0,0.88);backdrop-filter:blur(12px);opacity:0;pointer-events:none;transition:opacity 0.3s;}
+  .modal.open{opacity:1;pointer-events:all;}
+  .modal-box{background:rgba(6,14,6,0.97);border:1px solid rgba(50,120,50,0.3);border-radius:20px;width:820px;max-width:90vw;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;transform:scale(0.96);transition:transform 0.3s;}
+  .modal.open .modal-box{transform:scale(1);}
+  .modal-header{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid rgba(40,90,40,0.2);}
+  .modal-header-left{display:flex;align-items:center;gap:14px;}
+  .modal-badge2{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase;padding:3px 10px;border-radius:20px;}
+  .modal-title{font-family:'Space Mono',monospace;font-size:16px;font-weight:700;color:rgba(180,240,180,0.95);}
+  .modal-close{background:none;border:1px solid rgba(50,120,50,0.3);color:rgba(100,180,100,0.6);font-size:18px;width:32px;height:32px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;pointer-events:all;}
+  .modal-close:hover{background:rgba(40,90,40,0.3);color:rgba(150,230,150,0.9);}
+  .modal-body{display:flex;flex:1;overflow:hidden;}
+  .modal-canvas-wrap{position:relative;flex:0 0 420px;height:420px;background:rgba(4,10,4,0.9);}
+  canvas#detail{width:420px;height:420px;}
+  .modal-info{flex:1;padding:20px 18px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;border-left:1px solid rgba(30,70,30,0.2);}
+  .modal-desc{font-family:'DM Sans',sans-serif;font-size:12.5px;color:rgba(100,170,100,0.75);line-height:1.75;}
+  .modal-parts{display:flex;flex-direction:column;gap:5px;}
+  .modal-part{border-left:2px solid;padding:7px 10px;border-radius:0 8px 8px 0;background:rgba(8,18,8,0.6);}
+  .modal-part-name{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;margin-bottom:3px;}
+  .modal-part-desc{font-family:'DM Sans',sans-serif;font-size:11px;color:rgba(80,150,80,0.65);line-height:1.55;}
+  .label-tag{position:absolute;font-family:'Space Mono',monospace;font-size:9px;color:rgba(140,220,140,0.85);background:rgba(0,0,0,0.75);padding:2px 7px;border-radius:4px;pointer-events:none;white-space:nowrap;border:0.5px solid rgba(50,130,50,0.35);letter-spacing:.5px;}
+
+  /* custom cursor */
+  .cursor{position:fixed;z-index:9999;pointer-events:none;mix-blend-mode:screen;}
+  .cursor-ring{width:32px;height:32px;border:1.5px solid rgba(100,220,100,0.6);border-radius:50%;transform:translate(-50%,-50%);transition:width .15s,height .15s,border-color .15s;}
+  .cursor-dot{width:4px;height:4px;background:rgba(120,240,120,0.9);border-radius:50%;transform:translate(-50%,-50%);}
+  .cursor.hover .cursor-ring{width:48px;height:48px;border-color:rgba(120,255,120,0.85);}
+
+  ::-webkit-scrollbar{width:4px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:rgba(50,120,50,0.3);border-radius:2px;}
+</style>
+</head>
+<body>
+
+<!-- Custom cursor -->
+<div class="cursor" id="cursor">
+  <div class="cursor-ring" id="cursor-ring" style="position:fixed;top:0;left:0;"></div>
+  <div class="cursor-dot" id="cursor-dot" style="position:fixed;top:0;left:0;"></div>
+</div>
+
+<!-- Background canvas -->
+<canvas id="bg"></canvas>
+
+<!-- Main cell canvas -->
+<canvas id="cell"></canvas>
+
+<!-- Overlays -->
+<div class="scanlines"></div>
+<div class="vignette"></div>
+
+<!-- Corner decorations -->
+<div class="corner c-tl hud"><svg viewBox="0 0 60 60" fill="none"><path d="M2 58 L2 2 L58 2" stroke="rgba(80,180,80,0.25)" stroke-width="1.5"/><path d="M2 42 L2 2 L42 2" stroke="rgba(80,180,80,0.15)" stroke-width="1"/><circle cx="2" cy="2" r="3" fill="rgba(100,220,100,0.4)"/></svg></div>
+<div class="corner c-tr hud"><svg viewBox="0 0 60 60" fill="none"><path d="M2 58 L2 2 L58 2" stroke="rgba(80,180,80,0.25)" stroke-width="1.5"/><circle cx="2" cy="2" r="3" fill="rgba(100,220,100,0.4)"/></svg></div>
+<div class="corner c-bl hud"><svg viewBox="0 0 60 60" fill="none"><path d="M2 58 L2 2 L58 2" stroke="rgba(80,180,80,0.25)" stroke-width="1.5"/><circle cx="2" cy="2" r="3" fill="rgba(100,220,100,0.4)"/></svg></div>
+<div class="corner c-br hud"><svg viewBox="0 0 60 60" fill="none"><path d="M2 58 L2 2 L58 2" stroke="rgba(80,180,80,0.25)" stroke-width="1.5"/><circle cx="2" cy="2" r="3" fill="rgba(100,220,100,0.4)"/></svg></div>
+
+
+
+<!-- HUD bottom-left -->
+<div class="hud hud-bl">
+  <div class="hud-stat" id="hud-org-count">9 ORGANEL · AKTİF<br>MİTOZ — G1 EVRESI</div>
+</div>
+
+<!-- HUD bottom-right -->
+<div class="hud hud-br">
+  <div class="hud-stat">HOVER = VURGULA<br>TIKLA = İÇ YAPI</div>
+</div>
+
+<!-- Info panel (right side) -->
+<div class="info-panel" id="info-panel">
+  <div class="info-badge" id="ip-badge">—</div>
+  <div class="info-name" id="ip-name">—</div>
+  <div class="info-divider"></div>
+  <div class="info-desc" id="ip-desc">—</div>
+  <div class="info-stats" id="ip-stats"></div>
+  <div class="info-divider"></div>
+  <div class="info-hint">[ TIKLA → İÇ YAPI ]</div>
+</div>
+
+<!-- Modal -->
+<div class="modal" id="modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-header-left">
+        <div class="modal-badge2" id="m-badge">—</div>
+        <div class="modal-title" id="m-title">—</div>
+      </div>
+      <button class="modal-close" id="modal-close">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-canvas-wrap" style="position:relative">
+        <canvas id="detail" width="420" height="420"></canvas>
+        <div id="labels"></div>
+      </div>
+      <div class="modal-info">
+        <div class="modal-desc" id="m-desc">—</div>
+        <div class="modal-parts" id="m-parts"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// DATA
+// ============================================================
+const ORG_DATA = {
+  membrane:{name:'Hücre Zarı',color:'#3a8a3a',badge:['FOSFOLİPİD','#0d1f0d','#4aaa4a'],desc:'İki katlı fosfolipid tabakadan oluşan seçici geçirgen bariyer. Kolesterol akışkanlığı dengeler; integral proteinler madde taşıma ve sinyal iletimini üstlenir.',stats:[['Kalınlık','7–10 nm'],['Model','Akışkan Mozaik'],['Protein','%50 kütlece'],['Kolesterol','Akışkanlık']],detail:{desc:'Fosfolipid başları hidrofilik, kuyruklar hidrofobiktir. Kolesterol sıcaklığa göre akışkanlığı dengeler. Glikokaliks hücre tanıma ve korumasını sağlar.',draw:'membrane',parts:[{name:'Fosfolipid Çift Tabaka',desc:'Dış ve iç yaprak — hidrofobik çekirdek madde geçişini engeller.',color:'#3a8a3a'},{name:'İntegral Proteinler',desc:'Zar boyunca uzanan kanal, taşıyıcı ve reseptör proteinleri.',color:'#5aaa5a'},{name:'Kolesterol',desc:'Zar akışkanlığını sıcaklığa göre dengeler.',color:'#2a6a2a'},{name:'Glikokaliks',desc:'Dış yüzeydeki karbonhidrat zincirleri; hücre tanıma ve koruma.',color:'#7acc7a'}]}},
+  nucleus:{name:'Çekirdek',color:'#5555cc',badge:['KONTROL MERKEZİ','#0d0d25','#7777ee'],desc:'DNA\'yı barındıran hücrenin yönetim merkezidir. Nükleer por kompleksleri madde alışverişini yönetir. Çift katlı nükleer zarla çevrilmiştir.',stats:[['Çap','5–10 µm'],['DNA','~3×10⁹ baz'],['Por','3000–4000'],['Zar','Çift katlı']],detail:{desc:'Nükleer zar iki membran; perinükleer boşluk ile ayrılır. Porlar ~120 nm çapında 8 kollu yapıdır. İçeride ökromatin (aktif) ve heterokromatin (sessiz) bölgeler bulunur.',parts:[{name:'Dış Nükleer Zar',desc:'ER ile devamlıdır; ribozom taşıyabilir.',color:'#6666dd'},{name:'Nükleer Por Kompleksi',desc:'~30 proteinden oluşan 8 kollu kanal; mRNA ve protein geçişini kontrol eder.',color:'#9999ff'},{name:'Heterokromatin',desc:'Yoğun, sessiz DNA bölgesi; çoğunlukla zar çevresinde bulunur.',color:'#2233aa'},{name:'Nükleer Lamina',desc:'Lamin proteinlerinden oluşan iç iskelet; şekli korur.',color:'#8888ee'}]}},
+  nucleolus:{name:'Çekirdekçik',color:'#9955cc',badge:['rRNA FABRİKASI','#1a0d2a','#bb66ff'],desc:'rRNA sentezi ve ribozom alt birimi üretiminin gerçekleştiği zarsız bölgedir. Fibrilar Merkez, Yoğun Fibrilar Bölge ve Granüler Bileşen olmak üzere 3 bölgeden oluşur.',stats:[['Çap','1–3 µm'],['İçerik','rDNA+rRNA'],['Ürün','Ribozom alt birimi'],['Bölge','FM / YFB / GB']],detail:{desc:'Fibrilar Merkez\'de rDNA genleri bulunur. Yoğun Fibrilar Bölge\'de erken rRNA işleme gerçekleşir. Granüler Bileşen\'de olgunlaşan ribozom alt birimleri birikir ve nükleer porlardan sitoplazmaya gönderilir.',parts:[{name:'Fibrilar Merkez (FM)',desc:'rRNA genlerinin (rDNA) bulunduğu açık merkez bölge.',color:'#cc88ff'},{name:'Yoğun Fibrilar Bölge (YFB)',desc:'rRNA transkripsiyon ve erken işlemenin gerçekleştiği yoğun halka.',color:'#9944cc'},{name:'Granüler Bileşen (GB)',desc:'Pre-ribozomal partiküllerin olgunlaştığı dış granüler bölge.',color:'#7733aa'}]}},
+  mitochondria:{name:'Mitokondri',color:'#cc6622',badge:['ENERJİ SANTRALİ','#1e0d04','#ee8833'],desc:'ATP üreten çift zarlı organeldir. Kristae iç yüzey alanını artırır ve ATP sentazları barındırır. Kendi halkasal DNA\'sı ve ribozomları vardır.',stats:[['Uzunluk','1–10 µm'],['ATP/glikoz','36–38'],['Zar','Çift (kristae)'],['DNA','Halkasal mtDNA']],detail:{desc:'Dış zar geçirgendir. İç zar kristae kıvrımlarını oluşturur ve ~−180 mV potansiyel taşır. Matrix\'te Krebs döngüsü enzimler, mtDNA ve ribozomlar bulunur.',parts:[{name:'Dış Zar',desc:'Porin kanalları ile küçük moleküllere geçirgen.',color:'#ee7733'},{name:'İntermembran Boşluğu',desc:'H⁺ protonlarının biriktiği alan; gradyan burada oluşur.',color:'#cc5511'},{name:'İç Zar & Kristae',desc:'Elektron taşıma zinciri ve ATP sentaz burada; kıvrımlar yüzey alanını artırır.',color:'#ff9944'},{name:'Matrix',desc:'Krebs döngüsü, mtDNA ve ribozomlar burada.',color:'#aa4411'},{name:'ATP Sentaz',desc:'Proton akışını kullanarak ADP\'yi ATP\'ye dönüştürür.',color:'#ffbb66'}]}},
+  er_rough:{name:'Granüllü ER',color:'#cc9922',badge:['PROTEİN SENTEZİ','#1e1604','#ddaa33'],desc:'Yüzeyindeki ribozomlarla sekretuar ve membran proteinlerini sentezler. Lümeninde protein katlanma ve N-glikolizasyon gerçekleşir.',stats:[['Yapı','Sisterna+ribozom'],['İşlev','Protein sentezi'],['Hedef','Golgi→sekresyon'],['Marker','Ribophorin I/II']],detail:{desc:'Paralel sisternalar yığınıdır. SRP signal peptidi tanır ve ribozomu ER\'ye yönlendirir. Sec61 kanalından geçen polipeptit lümende katlanır ve kalite kontrolünden geçer.',parts:[{name:'Sisterna Lümeni',desc:'Protein katlanma, glikolizasyon ve Ca²⁺ deposu.',color:'#ddaa33'},{name:'Ribozomlar (60S+40S)',desc:'ER yüzeyine tutunur; mRNA okuyarak polipeptit sentezler.',color:'#cc2266'},{name:'SRP (Signal Partikülleri)',desc:'Signal peptidi tanır, ribozomu ER zarına yönlendirir.',color:'#ee9922'},{name:'Sec61 Translokasyon',desc:'Polipeptiti lümene geçiren protein kanalı.',color:'#ffcc44'}]}},
+  golgi:{name:'Golgi Aygıtı',color:'#2266cc',badge:['PAKET MERKEZİ','#040e1e','#4488ff'],desc:'Cis\'ten trans\'a akan yassı sisternalar yığınıdır. Proteinleri glikole eder, paketler ve lizozom/sekresyon/membrana yönlendirir.',stats:[['Sisterna','4–8 yığın'],['Yüzler','Cis / Trans'],['İşlev','Glikolizasyon'],['Ürün','Lizozom + sekret']],detail:{desc:'CGN ER\'den materyal alır. Medial\'de glikolizasyon/sülfatlama yapılır. TGN vezikül tomurcuklanması ile ürünleri hedeflerine gönderir. COPI retrograd taşımayı sağlar.',parts:[{name:'Cis Golgi Network',desc:'ER\'den gelen COPII vezikülleri burada füzyon yapar.',color:'#4488ff'},{name:'Medial Sisternalar',desc:'N-glikan işleme enzimleri burada aktiftir.',color:'#2266dd'},{name:'Trans Golgi Network',desc:'Sıralama istasyonu; lizozom, sekretuar, membran yolu ayrışır.',color:'#1144bb'},{name:'Sekretuar Veziküller',desc:'TGN\'den tomurcuklanan; ekzositozla dışarı salınır.',color:'#88aaff'}]}},
+  lysosome:{name:'Lizozom',color:'#66aa22',badge:['SİNDİRİM','#0d1a04','#88cc33'],desc:'50\'den fazla asit hidrolaz barındıran sindirim organeli. pH ~4.8\'lik asidik ortamında protein, lipid, nükleik asit ve polisakkaritleri parçalar.',stats:[['pH','~4.8 (asidik)'],['Enzim','50+ hidrolaz'],['Boyut','0.1–1.2 µm'],['Kaynak','Golgi TGN']],detail:{desc:'V-tipi H⁺ ATPaz proton pompalar ve asit ortamı sağlar. LAMP1/2 glikoproteinleri zarı kendi enzimlerinden korur. Otofajozomla birleşerek hücre içi yeniden dönüşümü sağlar.',parts:[{name:'LAMP1/2 (Zar Glikoprot.)',desc:'Lizozomal zarı asit hidrolazlardan korur.',color:'#88dd33'},{name:'V-ATPaz (H⁺ Pompası)',desc:'Asidik ortamı (pH 4.8) sağlar.',color:'#66bb22'},{name:'Asit Hidrolazlar',desc:'Proteaz, lipaz, nükleaz; optimum pH 4–5.',color:'#aaee44'},{name:'Otofagozom Füzyonu',desc:'Hasarlı organelleri içeren otofagozomla birleşir.',color:'#55aa11'}]}},
+  ribosome:{name:'Ribozom',color:'#cc2266',badge:['PROTEİN FABRİKASI','#1e0410','#ee3388'],desc:'mRNA kodonu ile tRNA antikodonunu eşleştirerek amino asitlerden polipeptit zinciri sentezleyen makromolekül kompleksidir.',stats:[['Boyut','~25 nm'],['Alt birim','60S + 40S'],['İçerik','rRNA + protein'],['Hız','~15 aa/sn']],detail:{desc:'A, P, E siteleri aminoasil-tRNA bağlanma, peptidil transfer ve çıkış işlevlerini yürütür. Büyük alt birimde peptidil transferaz aktivitesi; küçük alt birimde mRNA dekodlama gerçekleşir.',parts:[{name:'Büyük Alt Birim (60S)',desc:'28S, 5.8S, 5S rRNA + ~49 protein; peptidil transferaz.',color:'#ee3388'},{name:'Küçük Alt Birim (40S)',desc:'18S rRNA + ~33 protein; mRNA kodon eşleştirme.',color:'#cc1155'},{name:'A / P / E Siteleri',desc:'Aminoasil bağlanma, peptidil transfer ve tRNA çıkış siteleri.',color:'#ff66aa'},{name:'mRNA Tüneli',desc:'mRNA küçük alt birim boyunca geçerek okunur.',color:'#aa1144'}]}},
+  centrosome:{name:'Sentrozom',color:'#cc8822',badge:['MTOC','#1e1204','#eeaa33'],desc:'Dik açıyla konumlanmış iki sentriolden oluşan mikrotübül organizasyon merkezidir. Hücre bölünmesinde iğ ipliklerini oluşturur.',stats:[['Yapı','2 sentriol (⊥)'],['Mikrotübül','9×3 triplet'],['Görevi','İğ organizasyonu'],['PCM','γ-tubulin ring']],detail:{desc:'Ana ve oğul sentriol birbirine dik konumdadır. Her sentriol 9×3 mikrotübül tripletinden oluşur. PCM\'deki γ-TuRC kompleksleri mikrotübülleri nüklee eder.',parts:[{name:'Ana Sentriol',desc:'Olgun sentriol; distal ve subdistal ekler taşır.',color:'#eeaa33'},{name:'Oğul Sentriol',desc:'S fazında oluşan genç sentriol.',color:'#cc8822'},{name:'PCM (Perisentriolar)',desc:'γ-tubulin ve nükleasyonu sağlayan proteinler burada.',color:'#ffcc55'},{name:'9×3 Mikrotübül Triplet',desc:'A, B, C mikrotübülleri sentriol duvarını oluşturur.',color:'#dd9933'}]}},
+  er_smooth:{name:'Düz ER',color:'#22aa66',badge:['LİPİD SENTEZİ','#041a0e','#33dd88'],desc:'Ribozom taşımayan endoplazmik retikulum bölgesidir. Lipid ve steroid sentezi, kalsiyum depolanması ve toksin detoksifikasyonu görevlerini üstlenir.',stats:[['Yapı','Tübül ağı'],['İşlev','Lipid sentezi'],['Ca²⁺','Depo organeli'],['Bağlantı','Granüllü ER ile']],detail:{desc:'Düz ER tübüler yapıda olup granüllü ER ile devamlıdır. Karaciğerde detoksifikasyon enzimleri, kas hücrelerinde Ca²⁺ salınımı, steroid üreten hücrelerde kolesterol ve steroid sentezi gerçekleşir.',parts:[{name:'Tübüler Membran',desc:'Ribozomsuz düz membran; lipid sentez enzimleri burada yerleşir.',color:'#33dd88'},{name:'Ca²⁺ Kanalları',desc:'IP3 sinyaliyle Ca²⁺ serbest bırakır; kas kasılması ve hücre sinyali.',color:'#22bb66'},{name:'Sitokrom P450',desc:'Karaciğer hücrelerinde ilaç ve toksin detoksifikasyonunu sağlar.',color:'#44ee99'},{name:'Lipid & Steroid Sentez',desc:'Fosfolipid, kolesterol ve steroid hormon sentezinin gerçekleştiği bölge.',color:'#55ffaa'}]}},
+};
+
+// ============================================================
+// CANVAS & SIZING
+// ============================================================
+const cellCanvas = document.getElementById('cell');
+const ctx = cellCanvas.getContext('2d');
+const bgCanvas = document.getElementById('bg');
+const bgCtx = bgCanvas.getContext('2d');
+const dc = document.getElementById('detail');
+const dctx = dc.getContext('2d');
+
+let VW, VH, CW, CH, CX, CY, SCALE;
+
+function resize(){
+  VW = window.innerWidth; VH = window.innerHeight;
+  bgCanvas.width = VW; bgCanvas.height = VH;
+  // cell canvas sized to fit screen while maintaining aspect
+  const base = Math.min(VW * 0.72, VH * 0.88, 900);
+  CW = base; CH = base * 1.1;
+  cellCanvas.width = CW; cellCanvas.height = CH;
+  cellCanvas.style.width = CW + 'px';
+  cellCanvas.style.height = CH + 'px';
+  SCALE = base / 460;
+  CX = CW / 2; CY = CH / 2;
+}
+resize();
+window.addEventListener('resize', ()=>{ resize(); drawCell(hoveredId); });
+
+// ============================================================
+// BACKGROUND — animated particle field
+// ============================================================
+const particles = Array.from({length:80},()=>({
+  x: Math.random()*2000, y: Math.random()*1200,
+  vx: (Math.random()-.5)*.15, vy: (Math.random()-.5)*.15,
+  r: Math.random()*1.5+.3, a: Math.random()
+}));
+
+function drawBg(t){
+  bgCtx.fillStyle = '#050d05';
+  bgCtx.fillRect(0,0,VW,VH);
+  // grid
+  bgCtx.strokeStyle = 'rgba(30,70,30,0.08)';
+  bgCtx.lineWidth = .5;
+  const gs = 80;
+  for(let x=0;x<VW;x+=gs){bgCtx.beginPath();bgCtx.moveTo(x,0);bgCtx.lineTo(x,VH);bgCtx.stroke();}
+  for(let y=0;y<VH;y+=gs){bgCtx.beginPath();bgCtx.moveTo(0,y);bgCtx.lineTo(VW,y);bgCtx.stroke();}
+  // particles
+  particles.forEach(p=>{
+    p.x+=p.vx; p.y+=p.vy;
+    if(p.x<0)p.x=VW; if(p.x>VW)p.x=0;
+    if(p.y<0)p.y=VH; if(p.y>VH)p.y=0;
+    bgCtx.beginPath();bgCtx.arc(p.x,p.y,p.r,0,Math.PI*2);
+    bgCtx.fillStyle=`rgba(60,180,60,${p.a*0.3})`;bgCtx.fill();
+  });
+  // subtle nebula glow
+  const g=bgCtx.createRadialGradient(VW*.5,VH*.5,50,VW*.5,VH*.5,VH*.6);
+  g.addColorStop(0,'rgba(15,40,15,0.4)');g.addColorStop(1,'transparent');
+  bgCtx.fillStyle=g;bgCtx.fillRect(0,0,VW,VH);
+}
+
+// ============================================================
+// DRAW MAIN CELL
+// ============================================================
+const S = (n)=> n * SCALE;
+const tx = (x)=> CX + (x - 225) * SCALE;
+const ty = (y)=> CY + (y - 295) * SCALE;
+
+function drawCell(hov){
+  ctx.clearRect(0,0,CW,CH);
+  // cytoplasm
+  ctx.save();
+  ctx.beginPath(); ctx.ellipse(CX,CY, S(200), S(270), 0, 0, Math.PI*2);
+  const cg=ctx.createRadialGradient(CX,CY-S(30),S(20),CX,CY,S(230));
+  cg.addColorStop(0,'rgba(16,32,16,0.98)');cg.addColorStop(1,'rgba(6,12,6,0.99)');
+  ctx.fillStyle=cg;ctx.fill();
+  // filaments
+  ctx.clip();
+  ctx.strokeStyle='rgba(25,55,25,0.3)';ctx.lineWidth=S(0.7);
+  [[80,120,200,280,350,400],[150,80,310,200,390,420],[70,340,200,280,380,160],[100,500,260,380,420,180]].forEach(f=>{
+    ctx.beginPath();ctx.moveTo(tx(f[0]),ty(f[1]));ctx.quadraticCurveTo(tx(f[2]),ty(f[3]),tx(f[4]),ty(f[5]));ctx.stroke();
+  });
+  ctx.restore();
+
+  const act=(id)=> hov===id;
+
+  // glow helper
+  const glow=(id,x,y,r,col)=>{
+    if(!act(id)) return;
+    const g=ctx.createRadialGradient(x,y,0,x,y,r);
+    g.addColorStop(0,col+'66');g.addColorStop(1,'transparent');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();
+  };
+  const sc=(id)=>act(id)?1.13:1.0;
+
+  drawSmoothER(act('er_smooth'), sc('er_smooth'));
+  drawRoughER(act('er_rough'), sc('er_rough'));
+  drawGolgi2D(act('golgi'), sc('golgi'));
+  [{cx:308,cy:158,rx:46,ry:19,rot:-0.5},{cx:105,cy:390,rx:38,ry:16,rot:0.4},{cx:338,cy:432,rx:34,ry:14,rot:-0.2}].forEach(m=>{
+    glow('mitochondria',tx(m.cx),ty(m.cy),S(65),'#cc6622');
+    drawMito2D(m,act('mitochondria'),sc('mitochondria'));
+  });
+  [{cx:318,cy:368,r:15},{cx:108,cy:172,r:12},{cx:372,cy:268,r:13},{cx:88,cy:478,r:11}].forEach(l=>{
+    glow('lysosome',tx(l.cx),ty(l.cy),S(38),'#66aa22');
+    drawLyso2D(l,act('lysosome'),sc('lysosome'));
+  });
+  glow('centrosome',tx(275),ty(205),S(45),'#cc8822');
+  drawCentro2D({cx:275,cy:205},act('centrosome'),sc('centrosome'));
+  glow('nucleus',tx(225),ty(275),S(105),'#5555cc');
+  drawNucleus2D(act('nucleus'),act('nucleolus'),sc('nucleus'));
+  drawRibo2D(act('ribosome'),sc('ribosome'));
+  drawMembrane2D(act('membrane'),sc('membrane'));
+}
+
+function drawMembrane2D(a,s){
+  ctx.save();ctx.translate(CX,CY);ctx.scale(s,s);
+  ctx.beginPath();ctx.ellipse(0,0,S(205),S(275),0,0,Math.PI*2);
+  ctx.strokeStyle=a?'#5acc5a':'#2a6a2a';ctx.lineWidth=a?S(5):S(3);ctx.stroke();
+  ctx.beginPath();ctx.ellipse(0,0,S(197),S(267),0,0,Math.PI*2);
+  ctx.strokeStyle=a?'rgba(90,200,90,0.4)':'rgba(40,100,40,0.2)';ctx.lineWidth=S(2);ctx.stroke();
+  for(let i=0;i<20;i++){
+    const ang=(i/20)*Math.PI*2;
+    ctx.save();ctx.rotate(ang);ctx.translate(S(205),0);ctx.rotate(Math.PI/2);
+    ctx.beginPath();ctx.roundRect(-S(2),-S(7),S(4),S(14),S(2));
+    ctx.fillStyle=a?'rgba(100,220,100,0.7)':'rgba(50,140,50,0.4)';ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function drawMito2D(m,a,s){
+  ctx.save();ctx.translate(tx(m.cx),ty(m.cy));ctx.rotate(m.rot);ctx.scale(s,s);
+  ctx.beginPath();ctx.ellipse(0,0,S(m.rx),S(m.ry),0,0,Math.PI*2);
+  const g=ctx.createRadialGradient(0,-S(m.ry*.3),S(2),0,0,S(m.rx));
+  g.addColorStop(0,a?'rgba(230,120,50,0.6)':'rgba(190,90,35,0.38)');
+  g.addColorStop(1,a?'rgba(160,60,20,0.5)':'rgba(120,50,15,0.26)');
+  ctx.fillStyle=g;ctx.fill();
+  ctx.strokeStyle=a?'#ee7030':'#aa5025';ctx.lineWidth=a?S(2.5):S(1.5);ctx.stroke();
+  ctx.beginPath();ctx.ellipse(0,0,S(m.rx-4),S(m.ry-3),0,0,Math.PI*2);
+  ctx.strokeStyle=a?'rgba(230,140,70,0.5)':'rgba(180,100,40,0.28)';ctx.lineWidth=S(1);ctx.stroke();
+  const nc=Math.floor(m.rx/10);
+  for(let i=0;i<nc;i++){
+    const x=-S(m.rx)+S(8)+i*(S(m.rx)*2-S(16))/(nc-1||1);
+    ctx.beginPath();ctx.moveTo(x,-S(m.ry*.65));ctx.bezierCurveTo(x+S(5),0,x-S(5),0,x,S(m.ry*.65));
+    ctx.strokeStyle=a?'rgba(240,150,70,0.5)':'rgba(180,100,35,0.28)';ctx.lineWidth=S(1);ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawRoughER(a,s){
+  const base={cx:152,cy:260};
+  ctx.save();ctx.translate(tx(base.cx),ty(base.cy));ctx.scale(s,s);ctx.translate(-tx(base.cx),-ty(base.cy));
+  [[155,195,55,28,-0.28],[152,238,58,26,-0.22],[156,280,52,25,-0.18],[153,320,50,24,-0.14]].forEach(([cx,cy,rx,ry,rot])=>{
+    ctx.save();ctx.translate(tx(cx),ty(cy));ctx.rotate(rot);
+    ctx.beginPath();ctx.ellipse(0,-S(ry*.4),S(rx),S(ry*.55),0,Math.PI*.05,Math.PI*.95);
+    ctx.strokeStyle=a?'#ddaa44':'rgba(180,140,50,0.55)';ctx.lineWidth=a?S(2):S(1.4);ctx.stroke();
+    ctx.beginPath();ctx.ellipse(0,S(ry*.4),S(rx),S(ry*.55),0,-Math.PI*.95,-Math.PI*.05);
+    ctx.strokeStyle=a?'#ddaa44':'rgba(180,140,50,0.55)';ctx.lineWidth=a?S(2):S(1.4);ctx.stroke();
+    ctx.beginPath();ctx.ellipse(0,0,S(rx),S(ry*.85),0,0,Math.PI*2);
+    ctx.fillStyle=a?'rgba(200,160,50,0.1)':'rgba(160,120,40,0.06)';ctx.fill();
+    for(let i=0;i<8;i++){
+      const ang=(i/8)*Math.PI;
+      ctx.beginPath();ctx.arc(Math.cos(ang+Math.PI)*S(rx-2),(-S(ry*.4))+Math.sin(ang+Math.PI)*S(ry*.5),S(2.5),0,Math.PI*2);
+      ctx.fillStyle=a?'rgba(220,50,100,0.8)':'rgba(160,40,80,0.52)';ctx.fill();
+    }
+    ctx.restore();
+  });
+  ctx.restore();
+}
+
+function drawSmoothER(a,s){
+  [[338,148,380,220,372,178],[380,220,353,298,392,258],[353,298,373,358,343,328]].forEach(([x1,y1,x2,y2,cx2,cy2])=>{
+    ctx.beginPath();ctx.moveTo(tx(x1),ty(y1));ctx.quadraticCurveTo(tx(cx2),ty(cy2),tx(x2),ty(y2));
+    ctx.strokeStyle=a?'#44cc88':'rgba(34,160,100,0.45)';ctx.lineWidth=a?S(9):S(6);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(tx(x1),ty(y1));ctx.quadraticCurveTo(tx(cx2),ty(cy2),tx(x2),ty(y2));
+    ctx.strokeStyle=a?'rgba(10,50,30,0.9)':'rgba(5,25,14,0.65)';ctx.lineWidth=a?S(4):S(2.5);ctx.stroke();
+  });
+}
+
+function drawGolgi2D(a,s){
+  const pivot={x:263,y:373};
+  ctx.save();ctx.translate(tx(pivot.x),ty(pivot.y));ctx.scale(s,s);ctx.translate(-tx(pivot.x),-ty(pivot.y));
+  [[263,343,52,9],[265,360,58,9],[263,377,54,9],[261,394,48,8]].forEach(([cx,cy,rx,ry],i)=>{
+    const al=a?0.75-i*.08:0.42-i*.06;
+    ctx.beginPath();ctx.ellipse(tx(cx),ty(cy),S(rx),S(ry),0,0,Math.PI*2);
+    const g=ctx.createLinearGradient(tx(cx)-S(rx),ty(cy),tx(cx)+S(rx),ty(cy));
+    g.addColorStop(0,`rgba(30,80,190,${al})`);g.addColorStop(.5,`rgba(60,120,230,${al*.7})`);g.addColorStop(1,`rgba(20,65,165,${al})`);
+    ctx.fillStyle=g;ctx.fill();ctx.strokeStyle=a?'#4488ff':'rgba(40,100,220,0.45)';ctx.lineWidth=a?S(1.8):S(1);ctx.stroke();
+    if(i===3) for(let v=0;v<3;v++){
+      ctx.beginPath();ctx.arc(tx(cx)-S(18)+v*S(18),ty(cy)+S(ry)+S(8)+v*S(2),S(5),0,Math.PI*2);
+      ctx.fillStyle=a?'rgba(80,140,255,0.6)':'rgba(50,100,200,0.32)';ctx.fill();
+    }
+  });
+  ctx.restore();
+}
+
+function drawLyso2D(l,a,s){
+  ctx.save();ctx.translate(tx(l.cx),ty(l.cy));ctx.scale(s,s);
+  ctx.beginPath();ctx.arc(0,0,S(l.r),0,Math.PI*2);
+  const g=ctx.createRadialGradient(0,-S(l.r*.3),S(1),0,0,S(l.r));
+  g.addColorStop(0,a?'rgba(130,210,45,0.55)':'rgba(85,155,22,0.3)');
+  g.addColorStop(1,a?'rgba(65,135,12,0.5)':'rgba(42,95,10,0.24)');
+  ctx.fillStyle=g;ctx.fill();ctx.strokeStyle=a?'#88dd22':'rgba(65,155,20,0.55)';ctx.lineWidth=a?S(2):S(1.2);ctx.stroke();
+  for(let i=0;i<4;i++){const ang=(i/4)*Math.PI*2;ctx.beginPath();ctx.arc(Math.cos(ang)*S(l.r*.45),Math.sin(ang)*S(l.r*.45),S(l.r*.18),0,Math.PI*2);ctx.fillStyle=a?'rgba(160,245,55,0.5)':'rgba(105,185,32,0.32)';ctx.fill();}
+  ctx.restore();
+}
+
+function drawCentro2D(ct,a,s){
+  ctx.save();ctx.translate(tx(ct.cx),ty(ct.cy));ctx.scale(s,s);
+  const g=ctx.createRadialGradient(0,0,S(4),0,0,S(24));
+  g.addColorStop(0,a?'rgba(230,160,35,0.4)':'rgba(185,125,22,0.2)');g.addColorStop(1,'transparent');
+  ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,0,S(24),0,Math.PI*2);ctx.fill();
+  for(let j=-1;j<=1;j+=2){
+    ctx.save();ctx.rotate(j*.45);
+    for(let t=0;t<9;t++){const ang=(t/9)*Math.PI*2,px=Math.cos(ang)*S(7),py=Math.sin(ang)*S(7);ctx.beginPath();ctx.roundRect(px-S(1.5),py-S(5),S(3),S(10),S(1));ctx.fillStyle=a?'rgba(245,165,45,0.75)':'rgba(200,135,32,0.48)';ctx.fill();}
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function drawNucleus2D(aN,aNL,s){
+  const NX=tx(225),NY=ty(275),NRX=S(78),NRY=S(65);
+  ctx.save();ctx.translate(NX,NY);ctx.scale(s,s);
+  ctx.beginPath();ctx.ellipse(0,0,NRX,NRY,0,0,Math.PI*2);ctx.fillStyle='rgba(10,10,42,0.88)';ctx.fill();
+  ctx.save();ctx.beginPath();ctx.ellipse(0,0,NRX-S(4),NRY-S(4),0,0,Math.PI*2);ctx.clip();
+  ctx.beginPath();ctx.ellipse(0,0,NRX-S(4),NRY-S(4),0,0,Math.PI*2);ctx.strokeStyle=aN?'rgba(70,70,190,0.4)':'rgba(45,45,130,0.22)';ctx.lineWidth=S(10);ctx.stroke();
+  for(let i=0;i<14;i++){const ang=(i/14)*Math.PI*2,r=S(15+((i*7)%28));ctx.beginPath();ctx.arc(Math.cos(ang)*r,Math.sin(ang)*r,S(4+(i%4)),0,Math.PI*2);ctx.fillStyle=aN?'rgba(90,90,210,0.28)':'rgba(55,55,150,0.18)';ctx.fill();}
+  ctx.restore();
+  ctx.beginPath();ctx.ellipse(0,0,NRX+S(3),NRY+S(3),0,0,Math.PI*2);ctx.strokeStyle=aN?'#7777ee':'rgba(60,60,180,0.42)';ctx.lineWidth=aN?S(2.5):S(1.5);ctx.stroke();
+  ctx.beginPath();ctx.ellipse(0,0,NRX-S(5),NRY-S(5),0,0,Math.PI*2);ctx.strokeStyle=aN?'rgba(110,110,230,0.5)':'rgba(55,55,160,0.28)';ctx.lineWidth=S(1);ctx.stroke();
+  for(let i=0;i<10;i++){
+    const ang=(i/10)*Math.PI*2,px=Math.cos(ang)*NRX,py=Math.sin(ang)*NRY;
+    ctx.beginPath();ctx.arc(px,py,S(3.5),0,Math.PI*2);ctx.fillStyle=aN?'rgba(150,150,255,0.75)':'rgba(85,85,205,0.45)';ctx.fill();
+    for(let sp=0;sp<8;sp++){const sa=(sp/8)*Math.PI*2;ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(px+Math.cos(sa)*S(4),py+Math.sin(sa)*S(4));ctx.strokeStyle=aN?'rgba(150,150,255,0.3)':'rgba(85,85,205,0.18)';ctx.lineWidth=S(.5);ctx.stroke();}
+  }
+  // nucleolus
+  ctx.save();ctx.translate(S(5),S(-5));
+  ctx.beginPath();ctx.arc(0,0,S(22),0,Math.PI*2);ctx.strokeStyle=aNL?'rgba(170,85,230,0.35)':'rgba(110,52,175,0.2)';ctx.lineWidth=S(4);ctx.stroke();
+  ctx.beginPath();ctx.arc(0,0,S(15),0,Math.PI*2);ctx.strokeStyle=aNL?'rgba(190,100,250,0.55)':'rgba(130,65,195,0.35)';ctx.lineWidth=S(4);ctx.stroke();
+  ctx.beginPath();ctx.arc(0,0,S(7),0,Math.PI*2);ctx.fillStyle=aNL?'rgba(200,115,255,0.65)':'rgba(140,75,210,0.42)';ctx.fill();
+  ctx.restore();
+  ctx.restore();
+}
+
+function drawRibo2D(a,s){
+  const pos=[{cx:115,cy:188},{cx:120,cy:208},{cx:115,cy:228},{cx:122,cy:246},{cx:115,cy:266},{cx:120,cy:283},{cx:116,cy:300},{cx:122,cy:318},{cx:115,cy:337},{cx:121,cy:355},{cx:240,cy:162},{cx:255,cy:177},{cx:270,cy:152},{cx:290,cy:167},{cx:235,cy:452},{cx:250,cy:467},{cx:265,cy:450},{cx:90,cy:242},{cx:95,cy:262},{cx:88,cy:282},{cx:400,cy:312},{cx:410,cy:327},{cx:180,cy:492},{cx:195,cy:480}];
+  for(const rb of pos){
+    ctx.save();ctx.translate(tx(rb.cx),ty(rb.cy));ctx.scale(s,s);
+    ctx.beginPath();ctx.ellipse(0,S(1.5),S(4.5),S(3),0,0,Math.PI*2);ctx.fillStyle=a?'rgba(225,52,112,0.88)':'rgba(182,42,92,0.6)';ctx.fill();
+    ctx.beginPath();ctx.ellipse(0,-S(2),S(3),S(2),0,0,Math.PI*2);ctx.fillStyle=a?'rgba(205,82,135,0.72)':'rgba(162,62,102,0.5)';ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ============================================================
+// HIT TEST (scaled)
+// ============================================================
+function hitTest(mx,my){
+  // convert screen coords to logical
+  const rect = cellCanvas.getBoundingClientRect();
+  const lx = (mx - rect.left) / SCALE + (225 - CW/SCALE/2);
+  const ly = (my - rect.top) / SCALE + (295 - CH/SCALE/2);
+
+  if(Math.hypot(lx-275,ly-205)<26) return 'centrosome';
+  if(Math.hypot(lx-230,ly-275)<26) return 'nucleolus';
+  if(((lx-225)**2/(82**2))+((ly-275)**2/(69**2))<1) return 'nucleus';
+  const rbs=[{cx:115,cy:188},{cx:120,cy:208},{cx:115,cy:228},{cx:122,cy:246},{cx:115,cy:266},{cx:120,cy:283},{cx:116,cy:300},{cx:122,cy:318},{cx:115,cy:337},{cx:121,cy:355},{cx:240,cy:162},{cx:255,cy:177},{cx:270,cy:152},{cx:290,cy:167},{cx:235,cy:452},{cx:250,cy:467},{cx:265,cy:450},{cx:90,cy:242},{cx:95,cy:262},{cx:88,cy:282},{cx:400,cy:312},{cx:410,cy:327},{cx:180,cy:492},{cx:195,cy:480}];
+  for(const r of rbs) if(Math.hypot(lx-r.cx,ly-r.cy)<12) return 'ribosome';
+  const ls=[{cx:318,cy:368,r:15},{cx:108,cy:172,r:12},{cx:372,cy:268,r:13},{cx:88,cy:478,r:11}];
+  for(const l of ls) if(Math.hypot(lx-l.cx,ly-l.cy)<l.r+8) return 'lysosome';
+  const mts=[{cx:308,cy:158,rx:48,ry:20,rot:-0.5},{cx:105,cy:390,rx:40,ry:17,rot:0.4},{cx:338,cy:432,rx:36,ry:15,rot:-0.2}];
+  for(const m of mts){const dx=(lx-m.cx)*Math.cos(m.rot)+(ly-m.cy)*Math.sin(m.rot),dy=-(lx-m.cx)*Math.sin(m.rot)+(ly-m.cy)*Math.cos(m.rot);if((dx**2/((m.rx+10)**2))+(dy**2/((m.ry+10)**2))<1) return 'mitochondria';}
+  const serp=[[338,148],[380,220],[353,298],[373,358]];
+  for(const p of serp) if(Math.hypot(lx-p[0],ly-p[1])<22) return 'er_smooth';
+  const rerp=[[155,195],[152,238],[156,280],[153,320]];
+  for(const p of rerp) if(Math.hypot(lx-p[0],ly-p[1])<32) return 'er_rough';
+  if(lx>205&&lx<325&&ly>332&&ly<415) return 'golgi';
+  const d=((lx-225)**2/(205**2))+((ly-295)**2/(275**2));
+  if(d>0.82&&d<1.12) return 'membrane';
+  return null;
+}
+
+// ============================================================
+// PANEL
+// ============================================================
+function updatePanel(id){
+  const panel = document.getElementById('info-panel');
+  const d = ORG_DATA[id];
+  if(!d){ panel.classList.remove('visible'); return; }
+  panel.classList.add('visible');
+  const b=document.getElementById('ip-badge');
+  b.textContent=d.badge[0];b.style.background=d.badge[1];b.style.color=d.badge[2];
+  document.getElementById('ip-name').textContent=d.name;
+  document.getElementById('ip-desc').textContent=d.desc;
+  document.getElementById('ip-stats').innerHTML=d.stats.map(([l,v])=>`<div class="info-stat"><div class="info-stat-label">${l}</div><div class="info-stat-val">${v}</div></div>`).join('');
+}
+
+// ============================================================
+// MODAL & DETAIL DRAWERS
+// ============================================================
+function openModal(id){
+  const d=ORG_DATA[id]; if(!d)return;
+  const modal=document.getElementById('modal');
+  modal.classList.add('open');
+  const mb=document.getElementById('m-badge');
+  mb.textContent=d.badge[0];mb.style.background=d.badge[1];mb.style.color=d.badge[2];
+  document.getElementById('m-title').textContent=d.name;
+  document.getElementById('m-desc').textContent=d.detail.desc;
+  document.getElementById('m-parts').innerHTML=d.detail.parts.map(p=>`<div class="modal-part" style="border-color:${p.color}"><div class="modal-part-name" style="color:${p.color}">${p.name}</div><div class="modal-part-desc">${p.desc}</div></div>`).join('');
+  drawDetailCanvas(id);
+  drawDetailLabels(id);
+}
+
+document.getElementById('modal-close').addEventListener('click',()=>document.getElementById('modal').classList.remove('open'));
+document.getElementById('modal').addEventListener('click',e=>{if(e.target===document.getElementById('modal')) document.getElementById('modal').classList.remove('open');});
+
+const labelPositions={
+  mitochondria:[{text:'Dış Zar',x:255,y:55},{text:'İntermembran',x:230,y:95},{text:'İç Zar / Kristae',x:30,y:150},{text:'Matrix',x:175,y:195},{text:'ATP Sentaz',x:25,y:255},{text:'mtDNA',x:200,y:280},{text:'Ribozomlar',x:155,y:315}],
+  nucleus:[{text:'Dış Nükleer Zar',x:248,y:35},{text:'İç Nükleer Zar',x:252,y:62},{text:'Nükleer Por',x:298,y:120},{text:'Nükleer Lamina',x:248,y:155},{text:'Heterokromatin',x:33,y:185},{text:'Ökromatin',x:153,y:242},{text:'Nukleolus',x:100,y:168}],
+  membrane:[{text:'Glikokaliks',x:122,y:18},{text:'Dış Fosfolipid Tabaka',x:30,y:58},{text:'Kolesterol',x:250,y:102},{text:'İntegral Protein',x:30,y:168},{text:'İç Fosfolipid Tabaka',x:30,y:255},{text:'Periferal Protein',x:242,y:308}],
+  golgi:[{text:'Cis Golgi Network',x:188,y:52},{text:'Medial Sisternalar',x:228,y:158},{text:'Trans Golgi Network',x:192,y:272},{text:'COPI Vezikülü',x:30,y:102},{text:'Sekretuar Vezikül',x:30,y:322}],
+  lysosome:[{text:'LAMP1/2',x:58,y:33},{text:'V-ATPaz',x:62,y:75},{text:'Asit Hidrolazlar',x:132,y:188},{text:'pH ≈ 4.8',x:178,y:222},{text:'Otofagozom füzyonu',x:22,y:332}],
+  er_rough:[{text:'Sisterna Lümeni',x:182,y:58},{text:'Ribozomlar',x:30,y:128},{text:'ER Membranı',x:232,y:178},{text:'SRP Reseptörü',x:30,y:228},{text:'Sec61 Kanalı',x:22,y:292},{text:'İşlenen Protein',x:192,y:342}],
+  ribosome:[{text:'Büyük Alt Birim (60S)',x:188,y:92},{text:'Küçük Alt Birim (40S)',x:183,y:258},{text:'A Sitesi',x:58,y:148},{text:'P Sitesi',x:58,y:188},{text:'E Sitesi',x:278,y:202},{text:'mRNA',x:102,y:322},{text:'Polipeptit',x:242,y:92}],
+  centrosome:[{text:'Ana Sentriol',x:52,y:122},{text:'Oğul Sentriol',x:228,y:82},{text:'PCM (γ-tubulin)',x:153,y:178},{text:'9×3 Mikrotübül',x:38,y:282},{text:'İğ Mikrotübülleri',x:232,y:322}],
+  nucleolus:[{text:'Fibrilar Merkez (FM)',x:163,y:162},{text:'Yoğun Fibrilar Bölge',x:22,y:192},{text:'Granüler Bileşen',x:28,y:282},{text:'rRNA transkripsiyon',x:193,y:248}],
+  er_smooth:[{text:'Tübüler Membran',x:30,y:55},{text:'Ca²⁺ Kanalları',x:268,y:45},{text:'Sitokrom P450',x:230,y:175},{text:'Lipid Sentezi',x:25,y:225},{text:'Granüllü ER Bağlantısı',x:18,y:360}],
+};
+
+function drawDetailLabels(id){
+  const wrap=document.getElementById('labels');wrap.innerHTML='';
+  (labelPositions[id]||[]).forEach(({text,x,y})=>{
+    const el=document.createElement('div');el.className='label-tag';el.textContent=text;
+    el.style.left=x+'px';el.style.top=y+'px';wrap.appendChild(el);
+  });
+}
+
+function drawDetailCanvas(id){
+  dctx.clearRect(0,0,420,420);
+  dctx.fillStyle='#040a04';dctx.fillRect(0,0,420,420);
+  const fn=detailDrawers[id];
+  if(fn) fn(dctx);
+}
+
+const detailDrawers={
+  mitochondria(c){
+    const cx=210,cy=210,rx=165,ry=95;
+    c.beginPath();c.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);c.fillStyle='rgba(180,80,25,0.18)';c.fill();c.strokeStyle='#ee7030';c.lineWidth=4;c.stroke();
+    c.beginPath();c.ellipse(cx,cy,rx-10,ry-10,0,0,Math.PI*2);c.fillStyle='rgba(220,120,50,0.1)';c.fill();c.strokeStyle='rgba(220,120,50,0.28)';c.lineWidth=1;c.stroke();
+    c.beginPath();c.ellipse(cx,cy,rx-18,ry-18,0,0,Math.PI*2);c.fillStyle='rgba(140,55,15,0.22)';c.fill();c.strokeStyle='#ff9944';c.lineWidth=2.5;c.stroke();
+    const nc=8;
+    for(let i=0;i<nc;i++){
+      const xc=-rx+22+i*(rx*2-44)/(nc-1);
+      c.save();c.translate(cx,cy);c.beginPath();c.moveTo(xc,-(ry-22));c.bezierCurveTo(xc+18,-(ry-22)*.4,xc+18,(ry-22)*.4,xc,ry-22);c.strokeStyle='#ff9944';c.lineWidth=2;c.stroke();
+      for(let k=-1;k<=1;k+=2){c.beginPath();c.arc(xc+k*8,k*(ry*.3),4,0,Math.PI*2);c.fillStyle='rgba(255,220,80,0.7)';c.fill();c.beginPath();c.arc(xc+k*8,k*(ry*.3),7,0,Math.PI*2);c.strokeStyle='rgba(255,200,60,0.33)';c.lineWidth=1.5;c.stroke();}
+      c.restore();
+    }
+    for(let i=0;i<8;i++){const a=(i/8)*Math.PI*2,r=30+((i*13)%22);c.beginPath();c.arc(cx+Math.cos(a)*r,cy+Math.sin(a)*r,3.5,0,Math.PI*2);c.fillStyle='rgba(200,80,110,0.52)';c.fill();}
+    c.beginPath();c.arc(cx+18,cy+28,16,0,Math.PI*2);c.strokeStyle='rgba(100,180,100,0.48)';c.lineWidth=2;c.setLineDash([3,2]);c.stroke();c.setLineDash([]);
+  },
+  nucleus(c){
+    const cx=210,cy=205,rx=175,ry=145;
+    c.beginPath();c.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);c.fillStyle='rgba(10,10,48,0.9)';c.fill();
+    c.save();c.beginPath();c.ellipse(cx,cy,rx-6,ry-6,0,0,Math.PI*2);c.clip();
+    c.beginPath();c.ellipse(cx,cy,rx-6,ry-6,0,0,Math.PI*2);c.strokeStyle='rgba(55,55,155,0.42)';c.lineWidth=22;c.stroke();
+    for(let i=0;i<20;i++){const a=(i/20)*Math.PI*2,r=40+((i*11)%45);c.beginPath();c.arc(cx+Math.cos(a)*r,cy+Math.sin(a)*r,5+(i%5),0,Math.PI*2);c.fillStyle='rgba(75,75,185,0.26)';c.fill();}
+    c.restore();
+    c.beginPath();c.ellipse(cx,cy,rx+3,ry+3,0,0,Math.PI*2);c.strokeStyle='#7777ee';c.lineWidth=3;c.stroke();
+    c.beginPath();c.ellipse(cx,cy,rx-10,ry-10,0,0,Math.PI*2);c.strokeStyle='rgba(110,110,230,0.52)';c.lineWidth=2;c.stroke();
+    c.beginPath();c.ellipse(cx,cy,rx-12,ry-12,0,0,Math.PI*2);c.strokeStyle='rgba(80,80,180,0.28)';c.lineWidth=4;c.stroke();
+    for(let i=0;i<14;i++){
+      const a=(i/14)*Math.PI*2,px=cx+Math.cos(a)*rx,py=cy+Math.sin(a)*ry;
+      for(let s=0;s<8;s++){const sa=(s/8)*Math.PI*2;c.beginPath();c.arc(px+Math.cos(sa)*5,py+Math.sin(sa)*5,2,0,Math.PI*2);c.fillStyle='rgba(160,160,255,0.52)';c.fill();}
+      c.beginPath();c.arc(px,py,2.5,0,Math.PI*2);c.fillStyle='rgba(200,200,255,0.58)';c.fill();
+    }
+    c.save();c.translate(cx,cy-15);
+    c.beginPath();c.arc(0,0,38,0,Math.PI*2);c.fillStyle='rgba(100,45,155,0.22)';c.fill();c.strokeStyle='rgba(160,80,230,0.33)';c.lineWidth=6;c.stroke();
+    c.beginPath();c.arc(0,0,25,0,Math.PI*2);c.fillStyle='rgba(130,60,190,0.3)';c.fill();c.strokeStyle='rgba(190,100,255,0.48)';c.lineWidth=5;c.stroke();
+    c.beginPath();c.arc(0,0,12,0,Math.PI*2);c.fillStyle='rgba(200,110,255,0.6)';c.fill();
+    c.restore();
+  },
+  nucleolus(c){
+    const cx=210,cy=210;
+    c.beginPath();c.arc(cx,cy,120,0,Math.PI*2);c.fillStyle='rgba(90,40,130,0.22)';c.fill();c.strokeStyle='rgba(140,65,200,0.38)';c.lineWidth=3;c.stroke();
+    for(let i=0;i<28;i++){const a=(i/28)*Math.PI*2,r=65+((i*9)%40);c.beginPath();c.arc(cx+Math.cos(a)*r,cy+Math.sin(a)*r,3,0,Math.PI*2);c.fillStyle='rgba(160,80,230,0.38)';c.fill();}
+    c.beginPath();c.arc(cx,cy,75,0,Math.PI*2);c.fillStyle='rgba(140,65,200,0.28)';c.fill();c.strokeStyle='rgba(190,100,255,0.52)';c.lineWidth=5;c.stroke();
+    for(let i=0;i<16;i++){const a=(i/16)*Math.PI*2;c.beginPath();c.moveTo(cx+Math.cos(a)*38,cy+Math.sin(a)*38);c.lineTo(cx+Math.cos(a)*68,cy+Math.sin(a)*68);c.strokeStyle='rgba(210,130,255,0.28)';c.lineWidth=2;c.stroke();}
+    c.beginPath();c.arc(cx,cy,32,0,Math.PI*2);c.fillStyle='rgba(210,130,255,0.48)';c.fill();c.strokeStyle='rgba(230,160,255,0.58)';c.lineWidth=2;c.stroke();
+    for(let i=0;i<6;i++){const a=(i/6)*Math.PI*2;c.beginPath();c.arc(cx+Math.cos(a)*18,cy+Math.sin(a)*18,7,0,Math.PI*2);c.strokeStyle='rgba(255,200,255,0.48)';c.lineWidth=1.5;c.stroke();}
+  },
+  membrane(c){
+    const midY=210,W2=420,thick=55;
+    c.fillStyle='rgba(18,38,18,0.5)';c.fillRect(0,0,W2,midY-thick/2-8);
+    c.fillStyle='rgba(9,18,9,0.5)';c.fillRect(0,midY+thick/2+8,W2,420-midY-thick/2-8);
+    c.fillStyle='rgba(38,95,38,0.16)';c.fillRect(0,midY-thick/2-8,W2,thick/2+8);
+    c.fillStyle='rgba(32,88,32,0.16)';c.fillRect(0,midY,W2,thick/2+8);
+    const nPL=22,spacing=W2/nPL;
+    for(let i=0;i<nPL;i++){const x=i*spacing+spacing/2;drawPL(c,x,midY-thick/2,1,i);drawPL(c,x,midY+thick/2,-1,i+nPL);}
+    for(let i=0;i<8;i++){const x=25+i*(W2-30)/7;c.save();c.translate(x,midY);c.beginPath();c.roundRect(-3,-20,6,40,3);c.fillStyle='rgba(80,200,80,0.38)';c.fill();c.restore();}
+    [90,210,330].forEach(x=>{c.save();c.translate(x,midY);c.beginPath();c.roundRect(-8,-thick/2-5,16,thick+10,5);c.fillStyle='rgba(100,210,100,0.33)';c.fill();c.strokeStyle='rgba(120,230,120,0.48)';c.lineWidth=1.5;c.stroke();for(let h=-20;h<=20;h+=8){c.beginPath();c.arc(h%2===0?-3:3,h,3,0,Math.PI*2);c.fillStyle='rgba(160,255,160,0.38)';c.fill();}c.restore();});
+    for(let i=0;i<12;i++){const x=18+i*(W2-20)/11;c.save();c.translate(x,midY-thick/2-8);for(let b=0;b<3;b++){c.beginPath();c.arc((b-1)*6,-b*12-8,4,0,Math.PI*2);c.fillStyle=`rgba(120,230,120,${0.33+b*.05})`;c.fill();}c.restore();}
+  },
+  golgi(c){
+    const cx=210,startY=75,gap=40,n=5,widths=[100,130,148,132,105];
+    for(let i=0;i<n;i++){
+      const y=startY+i*gap,w=widths[i],al=0.6-i*.08;
+      c.beginPath();c.ellipse(cx,y,w,14,0,0,Math.PI*2);
+      const g=c.createLinearGradient(cx-w,y,cx+w,y);g.addColorStop(0,`rgba(30,80,190,${al})`);g.addColorStop(.5,`rgba(60,120,230,${al*.7})`);g.addColorStop(1,`rgba(20,65,165,${al})`);
+      c.fillStyle=g;c.fill();c.strokeStyle='#4488ff';c.lineWidth=1.5;c.stroke();
+      c.beginPath();c.ellipse(cx,y-4,w-6,8,0,0,Math.PI*2);c.strokeStyle='rgba(100,160,255,0.22)';c.lineWidth=2;c.stroke();
+    }
+    [cx-widths[0]-18,cx-widths[1]-22,cx-widths[2]-25].forEach((x,i)=>{c.beginPath();c.arc(x,startY+i*gap,10,0,Math.PI*2);c.fillStyle='rgba(80,130,240,0.33)';c.fill();c.strokeStyle='#6699ff';c.lineWidth=1;c.stroke();});
+    [cx-30,cx,cx+30].forEach((x,i)=>{c.beginPath();c.arc(x,startY+(n-1)*gap+35+i*5,11,0,Math.PI*2);c.fillStyle='rgba(60,140,255,0.38)';c.fill();c.strokeStyle='#88aaff';c.lineWidth=1;c.stroke();});
+    c.beginPath();c.arc(cx+85,startY+(n-1)*gap+40,10,0,Math.PI*2);c.fillStyle='rgba(80,180,30,0.33)';c.fill();c.strokeStyle='#66cc22';c.lineWidth=1;c.stroke();
+    for(let i=0;i<n-1;i++){const y=startY+i*gap+14;c.beginPath();c.moveTo(cx-8,y+5);c.lineTo(cx,y+12);c.lineTo(cx+8,y+5);c.strokeStyle='rgba(100,160,255,0.33)';c.lineWidth=1.5;c.stroke();}
+  },
+  lysosome(c){
+    const cx=210,cy=210,r=130;
+    c.beginPath();c.arc(cx,cy,r,0,Math.PI*2);
+    const g=c.createRadialGradient(cx,cy-40,20,cx,cy,r);g.addColorStop(0,'rgba(100,180,30,0.28)');g.addColorStop(1,'rgba(45,110,10,0.38)');
+    c.fillStyle=g;c.fill();c.strokeStyle='#88dd22';c.lineWidth=5;c.stroke();
+    for(let i=0;i<8;i++){const a=(i/8)*Math.PI*2,px=cx+Math.cos(a)*r,py=cy+Math.sin(a)*r;c.save();c.translate(px,py);c.rotate(a);c.beginPath();c.roundRect(-3,-12,6,14,2);c.fillStyle='rgba(180,255,50,0.52)';c.fill();c.beginPath();c.arc(0,-16,5,0,Math.PI*2);c.fillStyle='rgba(140,220,40,0.48)';c.fill();c.restore();}
+    for(let i=0;i<12;i++){const a=(i/12)*Math.PI*2+0.2,px=cx+Math.cos(a)*(r-6),py=cy+Math.sin(a)*(r-6);c.beginPath();c.arc(px,py,4,0,Math.PI*2);c.fillStyle='rgba(120,230,60,0.38)';c.fill();}
+    [{x:-50,y:-40,r:18},{x:30,y:-60,r:14},{x:-20,y:40,r:16},{x:55,y:20,r:15},{x:-65,y:20,r:12},{x:0,y:0,r:20}].forEach(e=>{c.beginPath();c.arc(cx+e.x,cy+e.y,e.r,0,Math.PI*2);c.fillStyle='rgba(150,250,55,0.32)';c.fill();c.strokeStyle='rgba(140,230,50,0.28)';c.lineWidth=1;c.stroke();});
+    c.save();c.font='bold 24px monospace';c.fillStyle='rgba(160,255,60,0.52)';c.textAlign='center';c.fillText('pH 4.8',cx,cy+5);c.restore();
+  },
+  er_rough(c){
+    [[90,80,150,38,-0.2],[85,165,155,36,-0.15],[90,248,150,35,-0.12],[88,328,148,34,-0.1]].forEach(([cx,cy,rx,ry,rot])=>{
+      c.save();c.translate(cx,cy);c.rotate(rot);
+      c.beginPath();c.ellipse(0,0,rx,ry,0,0,Math.PI*2);c.fillStyle='rgba(180,140,45,0.1)';c.fill();
+      c.beginPath();c.ellipse(0,-ry*.5,rx,ry*.5,0,Math.PI*.03,Math.PI*.97);c.strokeStyle='#ddaa44';c.lineWidth=3;c.stroke();
+      c.beginPath();c.ellipse(0,ry*.5,rx,ry*.5,0,-Math.PI*.97,-Math.PI*.03);c.strokeStyle='#ddaa44';c.lineWidth=3;c.stroke();
+      for(let i=0;i<14;i++){const a=(i/14)*Math.PI*1.8-Math.PI*.9,px=Math.cos(a)*rx,py=-ry*.5+Math.sin(a)*ry*.5-ry*.12;c.beginPath();c.ellipse(px,py-5,4.5,3,0,0,Math.PI*2);c.fillStyle='rgba(220,50,100,0.78)';c.fill();c.beginPath();c.ellipse(px,py-9,3,2,0,0,Math.PI*2);c.fillStyle='rgba(200,80,130,0.62)';c.fill();c.beginPath();c.moveTo(px,py);c.lineTo(px,py+ry*.3);c.strokeStyle='rgba(255,200,100,0.22)';c.lineWidth=1;c.stroke();}
+      c.beginPath();c.arc(-rx*.6,-ry*.55,7,0,Math.PI*2);c.fillStyle='rgba(255,170,30,0.38)';c.fill();
+      c.save();c.translate(0,-ry*.5);c.beginPath();c.roundRect(-5,0,10,ry,3);c.fillStyle='rgba(255,200,80,0.18)';c.fill();c.strokeStyle='rgba(255,180,50,0.38)';c.lineWidth=1.5;c.stroke();c.restore();
+      c.restore();
+    });
+  },
+  ribosome(c){
+    const cx=210,cy=190;
+    c.save();c.translate(cx,cy);
+    c.beginPath();c.ellipse(0,15,85,55,0,0,Math.PI*2);
+    const g1=c.createRadialGradient(0,5,10,0,15,85);g1.addColorStop(0,'rgba(230,55,115,0.52)');g1.addColorStop(1,'rgba(180,35,85,0.38)');
+    c.fillStyle=g1;c.fill();c.strokeStyle='#ee3388';c.lineWidth=3;c.stroke();
+    c.beginPath();c.moveTo(-15,55);c.bezierCurveTo(-20,80,-10,100,0,115);c.strokeStyle='rgba(255,150,200,0.38)';c.lineWidth=6;c.stroke();
+    for(let i=0;i<6;i++){c.beginPath();c.arc(-30+i*12,10+(i%2)*12,5,0,Math.PI*2);c.fillStyle='rgba(255,100,170,0.28)';c.fill();}
+    c.beginPath();c.ellipse(0,-42,75,32,0,0,Math.PI*2);
+    const g2=c.createRadialGradient(0,-42,5,0,-42,75);g2.addColorStop(0,'rgba(215,75,135,0.48)');g2.addColorStop(1,'rgba(165,45,95,0.36)');
+    c.fillStyle=g2;c.fill();c.strokeStyle='#cc1155';c.lineWidth=2.5;c.stroke();
+    [['A',-30,-42,'#ff88cc'],['P',5,-42,'#ee66aa'],['E',38,-42,'#cc4488']].forEach(([l,x,y,col])=>{c.beginPath();c.arc(x,y,10,0,Math.PI*2);c.fillStyle=col+'44';c.fill();c.strokeStyle=col;c.lineWidth=1.5;c.stroke();c.font='bold 10px monospace';c.fillStyle=col;c.textAlign='center';c.fillText(l,x,y+4);});
+    c.beginPath();c.moveTo(-120,-42);c.lineTo(120,-42);c.strokeStyle='rgba(255,200,100,0.42)';c.lineWidth=4;c.stroke();
+    c.save();c.translate(-28,-42);c.beginPath();c.moveTo(0,-25);c.lineTo(0,25);c.strokeStyle='rgba(100,255,180,0.48)';c.lineWidth=2;c.stroke();c.beginPath();c.arc(0,-28,7,0,Math.PI*2);c.fillStyle='rgba(100,255,180,0.33)';c.fill();c.restore();
+    c.beginPath();c.moveTo(-8,60);for(let i=0;i<8;i++) c.lineTo(-8+(i%2)*12,60+i*12);c.strokeStyle='rgba(255,220,100,0.38)';c.lineWidth=3;c.stroke();
+    c.restore();
+  },
+  centrosome(c){
+    const cx=210,cy=210;
+    const g=c.createRadialGradient(cx,cy,15,cx,cy,140);g.addColorStop(0,'rgba(220,160,35,0.28)');g.addColorStop(.5,'rgba(180,130,25,0.1)');g.addColorStop(1,'transparent');
+    c.fillStyle=g;c.beginPath();c.arc(cx,cy,140,0,Math.PI*2);c.fill();
+    for(let i=0;i<8;i++){const a=(i/8)*Math.PI*2,r=70;c.beginPath();c.arc(cx+Math.cos(a)*r,cy+Math.sin(a)*r,8,0,Math.PI*2);c.strokeStyle='rgba(255,200,60,0.38)';c.lineWidth=2;c.stroke();c.beginPath();c.moveTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r);c.lineTo(cx+Math.cos(a)*145,cy+Math.sin(a)*145);c.strokeStyle='rgba(255,180,40,0.28)';c.lineWidth=2;c.stroke();}
+    [[-28,0,0.45],[28,0,-0.45]].forEach(([dx,dy,rot])=>{
+      c.save();c.translate(cx+dx,cy+dy);c.rotate(rot);
+      c.beginPath();c.roundRect(-10,-28,20,56,5);c.fillStyle='rgba(200,130,25,0.13)';c.fill();c.strokeStyle='rgba(240,160,40,0.38)';c.lineWidth=1.5;c.stroke();
+      for(let t=0;t<9;t++){const a=(t/9)*Math.PI*2,px=Math.cos(a)*9,py=Math.sin(a)*9;c.beginPath();c.arc(px,py,3,0,Math.PI*2);c.fillStyle='rgba(255,170,40,0.58)';c.fill();c.beginPath();c.arc(px+Math.cos(a+.4)*4.5,py+Math.sin(a+.4)*4.5,2.5,0,Math.PI*2);c.fillStyle='rgba(235,150,30,0.48)';c.fill();c.beginPath();c.arc(px+Math.cos(a+.8)*8,py+Math.sin(a+.8)*8,2,0,Math.PI*2);c.fillStyle='rgba(215,130,20,0.38)';c.fill();}
+      c.restore();
+    });
+  },
+  er_smooth(c){
+    c.fillStyle='#040a04';c.fillRect(0,0,420,420);
+    // Arka plan parıltısı
+    const bg=c.createRadialGradient(210,210,20,210,210,180);
+    bg.addColorStop(0,'rgba(34,170,100,0.12)');bg.addColorStop(1,'transparent');
+    c.fillStyle=bg;c.beginPath();c.arc(210,210,180,0,Math.PI*2);c.fill();
+    // Tübüller
+    const tubes=[
+      [[60,80],[110,130],[150,200],[130,280],[160,350],[220,390]],
+      [[220,390],[290,370],[350,300],[370,220],[340,145],[275,100],[205,75]],
+      [[150,200],[210,185],[270,210],[310,260],[290,330]],
+      [[130,280],[190,260],[250,240],[300,260]],
+    ];
+    tubes.forEach(pts=>{
+      c.beginPath();c.moveTo(pts[0][0],pts[0][1]);
+      pts.slice(1).forEach(p=>c.lineTo(p[0],p[1]));
+      c.strokeStyle='rgba(34,160,100,0.2)';c.lineWidth=16;c.lineJoin='round';c.stroke();
+      c.beginPath();c.moveTo(pts[0][0],pts[0][1]);
+      pts.slice(1).forEach(p=>c.lineTo(p[0],p[1]));
+      c.strokeStyle='rgba(50,200,130,0.6)';c.lineWidth=8;c.stroke();
+      c.beginPath();c.moveTo(pts[0][0],pts[0][1]);
+      pts.slice(1).forEach(p=>c.lineTo(p[0],p[1]));
+      c.strokeStyle='rgba(10,60,35,0.85)';c.lineWidth=2;c.stroke();
+    });
+    // Ca2+ noktaları
+    [[120,150],[200,95],[315,128],[368,195],[358,278],[288,352],[182,372]].forEach(([x,y])=>{
+      c.beginPath();c.arc(x,y,8,0,Math.PI*2);c.fillStyle='rgba(100,220,255,0.4)';c.fill();
+      c.strokeStyle='rgba(60,180,220,0.75)';c.lineWidth=1.5;c.stroke();
+      c.font='bold 9px monospace';c.fillStyle='rgba(100,220,255,0.8)';c.textAlign='center';c.fillText('Ca²⁺',x,y+3);
+    });
+    // P450 enzimleri
+    [[245,183],[293,222],[252,263]].forEach(([x,y])=>{
+      c.beginPath();c.arc(x,y,10,0,Math.PI*2);c.fillStyle='rgba(255,180,50,0.35)';c.fill();
+      c.strokeStyle='rgba(240,160,40,0.7)';c.lineWidth=1.5;c.stroke();
+    });
+    c.font='bold 13px monospace';c.fillStyle='rgba(50,200,130,0.5)';c.textAlign='center';c.fillText('Düz ER',210,210);
+  },
+};
+
+function drawPL(c,x,baseY,dir,seed){
+  const headR=7,tailLen=28;
+  c.beginPath();c.arc(x,baseY,headR,0,Math.PI*2);c.fillStyle='rgba(60,170,60,0.48)';c.fill();c.strokeStyle='rgba(80,200,80,0.32)';c.lineWidth=1;c.stroke();
+  for(let t=-1;t<=1;t+=2){c.beginPath();c.moveTo(x+t*3,baseY+dir*headR);const wx=(seed%5-2)*2;c.quadraticCurveTo(x+t*3+wx,baseY+dir*(headR+tailLen*.5),x+t*4,baseY+dir*(headR+tailLen));c.strokeStyle='rgba(40,130,40,0.38)';c.lineWidth=2;c.stroke();}
+}
+
+// ============================================================
+// HUD CLOCK
+// ============================================================
+function updateHUD(){
+  const el=document.getElementById('hud-time');
+  if(!el) return;
+  const now=new Date();
+  el.textContent=`${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}\n${now.toLocaleDateString('tr-TR',{weekday:'short',day:'2-digit',month:'short',year:'numeric'}).toUpperCase()}`;
+}
+setInterval(updateHUD,1000);updateHUD();
+
+// ============================================================
+// CURSOR
+// ============================================================
+const cursorEl=document.getElementById('cursor');
+const ring=document.getElementById('cursor-ring');
+const dot=document.getElementById('cursor-dot');
+let mouseX=0,mouseY=0;
+document.addEventListener('mousemove',e=>{
+  mouseX=e.clientX;mouseY=e.clientY;
+  ring.style.left=mouseX+'px';ring.style.top=mouseY+'px';
+  dot.style.left=mouseX+'px';dot.style.top=mouseY+'px';
+});
+
+// ============================================================
+// INTERACTION
+// ============================================================
+let hoveredId=null;
+let animT=0;
+
+cellCanvas.addEventListener('mousemove',e=>{
+  const hit=hitTest(e.clientX,e.clientY);
+  if(hit!==hoveredId){
+    hoveredId=hit;
+    cellCanvas.style.cursor='none';
+    updatePanel(hit);
+    if(hit) cursorEl.classList.add('hover'); else cursorEl.classList.remove('hover');
+  }
+});
+cellCanvas.addEventListener('mouseleave',()=>{
+  hoveredId=null;updatePanel(null);cursorEl.classList.remove('hover');
+});
+cellCanvas.addEventListener('click',e=>{
+  const hit=hitTest(e.clientX,e.clientY);
+  if(hit) openModal(hit);
+});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape') document.getElementById('modal').classList.remove('open');
+});
+
+// ============================================================
+// RENDER LOOP
+// ============================================================
+function loop(t){
+  animT=t*.001;
+  drawBg(animT);
+  drawCell(hoveredId);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
